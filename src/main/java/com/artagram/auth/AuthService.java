@@ -94,7 +94,7 @@ public class AuthService {
         tokenRepository.save(new TokenVerificacion(usuario, token, Instant.now().plus(VERIFICACION_HORAS, ChronoUnit.HOURS)));
 
         String enlace = emailProperties.getVerificationLinkBase() + "?token=" + token;
-        emailService.enviarVerificacion(usuario.getCorreo(), usuario.getNombreArtista(), enlace);
+        eventPublisher.publicarVerificacionSolicitada(usuario, enlace);
 
         log.info("Usuario registrado, pendiente de verificacion: id={}", usuario.getId());
         return new RegistroResponse(usuario.getId(), usuario.getCorreo(), usuario.getNombreArtista(),
@@ -127,6 +127,7 @@ public class AuthService {
         }
         String token = jwtService.generarToken(usuario);
         meterRegistry.counter("negocio_eventos_total", "tipo", "LOGIN").increment();
+        eventPublisher.publicarLogin(usuario);
         return new LoginResponse(token, usuario.getId(), usuario.getNombreArtista(),
                 usuario.getRolGlobal().name(), usuario.isPremium());
     }

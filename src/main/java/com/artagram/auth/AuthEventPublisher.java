@@ -51,6 +51,36 @@ public class AuthEventPublisher {
         }
     }
 
+    public void publicarLogin(Usuario usuario) {
+        Map<String, Object> payload = Map.of(
+                "usuarioId", usuario.getId().toString(),
+                "ocurridoEn", Instant.now().toString()
+        );
+        try {
+            rabbitTemplate.convertAndSend(exchange, "user.login", payload);
+        } catch (Exception e) {
+            log.warn("No se pudo publicar user.login en RabbitMQ para usuarioId={}: {}",
+                    usuario.getId(), e.getMessage());
+        }
+    }
+
+    public void publicarVerificacionSolicitada(Usuario usuario, String enlaceVerificacion) {
+        Map<String, Object> payload = Map.of(
+                "usuarioId", usuario.getId().toString(),
+                "correo", usuario.getCorreo(),
+                "nombreArtista", usuario.getNombreArtista(),
+                "enlaceVerificacion", enlaceVerificacion,
+                "timestamp", Instant.now().toString()
+        );
+        try {
+            rabbitTemplate.convertAndSend(exchange, "user.verification.requested", payload);
+            log.info("Evento user.verification.requested publicado: usuarioId={}", usuario.getId());
+        } catch (Exception e) {
+            log.warn("No se pudo publicar user.verification.requested en RabbitMQ para usuarioId={}: {}",
+                    usuario.getId(), e.getMessage());
+        }
+    }
+
     public void publicarUsuarioEliminado(UUID usuarioId, String nombreArtista) {
         Map<String, Object> payload = Map.of(
                 "usuarioId", usuarioId.toString(),

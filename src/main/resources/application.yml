@@ -59,6 +59,12 @@ management:
       probes:
         enabled: true
       show-details: always
+  health:
+    mail:
+      # El chequeo de salud de JavaMailSender intenta abrir una conexion SMTP
+      # real; en EMAIL_MODE=log (dev) no hay servidor SMTP configurado y ese
+      # intento reportaria la app entera como DOWN por algo que ni se usa.
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
