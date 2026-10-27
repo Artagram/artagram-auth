@@ -2,6 +2,10 @@
 
 Microservicio de identidad y autenticación de ArtaGram (`:8081`, base de datos `db_auth`).
 
+## Descripción del servicio
+
+`artagram-auth` es el microservicio responsable de la identidad digital dentro de ArtaGram: registra artistas, verifica su correo, valida credenciales en el login y emite los tokens JWT que el resto del ecosistema (gateway, lienzo, etc.) usa para reconocer a un usuario autenticado. Existe como servicio independiente porque la emisión y verificación de identidad es una responsabilidad transversal que *todos* los demás microservicios necesitan, pero que ninguno debería implementar por su cuenta: al concentrar aquí la única llave privada RSA y el `PasswordEncoder`, el resto de los servicios solo necesita la llave pública (vía JWKS) para confiar en un token, sin tener que conocer contraseñas, hashes ni la lógica de registro/verificación. Esto permite que `artagram-auth` evolucione sus reglas de negocio de cuentas (verificación de correo, disponibilidad de nombre de artista, eliminación de cuenta, sincronización de estado `premium`) de forma aislada, con su propia base de datos (`db_auth`) y su propio ciclo de despliegue, sin acoplarse al resto de los dominios de ArtaGram.
+
 ## Responsabilidades
 - Registro de artistas (`POST /api/auth/registro`), verificación de correo (`GET /api/auth/verificar`) y disponibilidad de nombre (`GET /api/auth/nombre-disponible`).
 - Inicio de sesión (`POST /api/auth/login`) con emisión de JWT asimétricos **RS256** (llave privada RSA 2048).
@@ -11,7 +15,7 @@ Microservicio de identidad y autenticación de ArtaGram (`:8081`, base de datos 
   - `user.deleted`
 - Sincronización del estado `premium` consumiendo `subscription.updated` en la cola `auth.subscription.updated`.
 
-## Diseño y Arquitectura
+## Diagrama de clases
 
 ```mermaid
 classDiagram
@@ -88,6 +92,7 @@ classDiagram
     class RolGlobal {
         <<enumeration>>
         USUARIO
+        MODERADOR
         ADMIN
     }
     class UsuarioRepository {
@@ -119,9 +124,11 @@ classDiagram
     AuthEventPublisher --> UsuarioRepository
 ```
 
-### Descripción
+La capa de dominio (`Usuario`, `TokenVerificacion`) es delgada y persistente vía JPA; la lógica de negocio vive en `AuthService`, que orquesta validación, hashing de contraseña (`PasswordEncoder`), emisión de token (`RsaJwtService`) y notificación de eventos (`AuthEventPublisher`) sin conocer los detalles de implementación de ninguno.
 
-`artagram-auth` es el emisor único de identidad del sistema: registra artistas, valida credenciales y firma JWT **RS256** (asimétrico) que el resto de los microservicios verifica localmente contra la llave pública expuesta en `/.well-known/jwks.json` — nadie más que este servicio necesita conocer la llave privada. La capa de dominio (`Usuario`, `TokenVerificacion`) es delgada y persistente vía JPA; la lógica de negocio vive en `AuthService`, que orquesta validación, hashing de contraseña (`PasswordEncoder`), emisión de token (`RsaJwtService`) y notificación de eventos (`AuthEventPublisher`) sin conocer los detalles de implementación de ninguno.
+## Diseño y Arquitectura
+
+`artagram-auth` es el emisor único de identidad del sistema: registra artistas, valida credenciales y firma JWT **RS256** (asimétrico) que el resto de los microservicios verifica localmente contra la llave pública expuesta en `/.well-known/jwks.json` — nadie más que este servicio necesita conocer la llave privada. Ver el [Diagrama de clases](#diagrama-de-clases) arriba.
 
 ### Principios SOLID
 
@@ -145,3 +152,38 @@ classDiagram
 - **RabbitMQ**: cambiar a **Amazon MQ (RabbitMQ)** es solo variables de conexión (`RABBITMQ_HOST`, credenciales desde Secrets Manager); el broker lógico (`artagram.events`, colas `auth.subscription.updated`) no cambia.
 - **Stateless por diseño**: `SessionCreationPolicy.STATELESS` + JWT sin estado en servidor significa que `artagram-auth` escala horizontalmente sin *sticky sessions* — ideal para un Auto Scaling Group de ECS/Fargate detrás de un ALB.
 - **Secretos adicionales a externalizar**: `DB_PASSWORD`, credenciales SMTP si se activa `app.email.mode=smtp` — todos ya se leen de variables de entorno, listos para Secrets Manager.
+
+## Atributos de calidad
+
+### Seguridad
+
+La verificación de identidad no depende de un secreto compartido entre servicios: `RsaJwtService` firma con una llave **privada** RSA 2048 que nunca sale de `artagram-auth`, y cualquier otro servicio valida la firma con la llave **pública** publicada en `/.well-known/jwks.json` (`JwksController`). Un token alterado o firmado con otra llave no pasa `Jwts.parser().verifyWith(publicKey)` en `RsaJwtService.validar(String)`.
+
+- **Fuente**: un cliente (o un atacante) que envía una petición con un header `Authorization: Bearer <token>` cuya firma no corresponde a la llave privada de `artagram-auth` (token falsificado, expirado o manipulado).
+- **Estímulo**: la petición llega a un endpoint protegido, por ejemplo `DELETE /api/auth/cuenta`, que internamente llama a `RsaJwtService.validar(...)`.
+- **Artefacto**: `RsaJwtService.validar(String)` y las llaves RSA cargadas en `cargarOGenerarParRsa`.
+- **Ambiente**: operación normal en producción, con la llave privada montada solo en `artagram-auth` (archivo o variable `JWT_PRIVATE_KEY_PEM`) y nunca compartida con otros servicios.
+- **Respuesta**: `Jwts.parser().verifyWith(publicKey).build().parseSignedClaims(token)` lanza `JwtException`/`IllegalArgumentException`; el método la captura y retorna `Optional.empty()`, por lo que `AuthController.resolverUsuarioAutenticado` lanza `ApiException.unauthorized("NO_AUTENTICADO", ...)`.
+- **Medida de respuesta**: el 100% de los tokens con firma inválida, formato corrupto o vencidos son rechazados en la validación local (sin red), sin exponer nunca la llave privada ni detalles internos de la causa del rechazo al cliente.
+
+### Escalabilidad / Disponibilidad
+
+El diseño es explícitamente *stateless*: `SecurityConfig` fija `SessionCreationPolicy.STATELESS` y la validez de un JWT se verifica solo con la llave pública distribuida vía JWKS, no contra una sesión ni una base de datos de tokens activos.
+
+- **Fuente**: un pico de tráfico (por ejemplo, una campaña que dispara registros y logins simultáneos).
+- **Estímulo**: aumenta el número de peticiones de login (`POST /api/auth/login`) y de validaciones de JWT que hacen otros microservicios (gateway, lienzo) contra tokens ya emitidos.
+- **Artefacto**: `SecurityConfig` (política `STATELESS`) junto con `RsaJwtService`/`JwksController` (validación local vía JWKS).
+- **Ambiente**: producción, con varias instancias de `artagram-auth` y de los servicios consumidores detrás de un balanceador de carga (ALB/ECS Fargate).
+- **Respuesta**: como no hay sesión ni estado de autenticación guardado en el servidor, cualquier instancia de `artagram-auth` puede atender el login, y cualquier instancia de cualquier otro servicio puede validar el token localmente (RS256 + JWKS) sin volver a llamar a `artagram-auth` ni requerir *sticky sessions*.
+- **Medida de respuesta**: se pueden agregar instancias adicionales de `artagram-auth` en caliente sin reconfigurar sesiones, y la validación de un JWT ya emitido no genera ninguna llamada de red adicional hacia `artagram-auth` (0 peticiones por validación, solo el fetch inicial de `/.well-known/jwks.json`).
+
+### Modificabilidad
+
+El envío de correos de verificación está detrás de la interfaz `EmailService`, con dos implementaciones (`LogEmailService`, `SmtpEmailService`) seleccionadas en tiempo de arranque por `@ConditionalOnProperty(prefix = "app.email", name = "mode", ...)`, sin que `AuthService` conozca cuál está activa.
+
+- **Fuente**: el equipo de desarrollo/operaciones, que necesita pasar de correos simulados en log (ambiente de desarrollo) a envío real por SMTP en producción, o agregar un nuevo proveedor (p. ej. Amazon SES) en el futuro.
+- **Estímulo**: se solicita cambiar el proveedor de envío de correo de verificación sin afectar el resto del servicio.
+- **Artefacto**: la interfaz `EmailService` y sus implementaciones `LogEmailService`/`SmtpEmailService`, resueltas por la propiedad `app.email.mode` (`EmailProperties`).
+- **Ambiente**: tiempo de configuración/despliegue, no de desarrollo activo.
+- **Respuesta**: basta con cambiar la variable de entorno `EMAIL_MODE` (de `log` a `smtp`, o a un nuevo valor si se agrega un tercer proveedor); Spring resuelve automáticamente cuál `@Service` se instancia vía `@ConditionalOnProperty`, y `AuthService` sigue dependiendo únicamente de la interfaz `EmailService`.
+- **Medida de respuesta**: el cambio de proveedor de correo requiere modificar una sola variable de configuración y cero líneas de código en `AuthService` o en cualquier otra clase que no sea la nueva implementación de `EmailService`.
