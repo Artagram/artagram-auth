@@ -42,6 +42,15 @@ public class AuthController {
         return ResponseEntity.ok(authService.completarRegistroGoogle(request.idToken(), request.nombreArtista()));
     }
 
+    /**
+     * Vuelve a emitir el JWT con los datos actuales, por ejemplo tras un pago.
+     * Solo acepta el token Bearer, nunca X-User-Id: esta ruta emite credenciales.
+     */
+    @PostMapping("/api/auth/token/refrescar")
+    public ResponseEntity<LoginResponse> refrescarToken(HttpServletRequest request) {
+        return ResponseEntity.ok(authService.refrescarToken(resolverPorToken(request)));
+    }
+
     @GetMapping("/api/auth/nombre-disponible")
     public ResponseEntity<NombreDisponibleResponse> nombreDisponible(@RequestParam String nombre) {
         return ResponseEntity.ok(authService.verificarNombreDisponible(nombre));
@@ -60,6 +69,10 @@ public class AuthController {
         if (xUserId != null && !xUserId.isBlank()) {
             return UUID.fromString(xUserId);
         }
+        return resolverPorToken(request);
+    }
+
+    private UUID resolverPorToken(HttpServletRequest request) {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return rsaJwtService.validar(authHeader.substring(7).trim())

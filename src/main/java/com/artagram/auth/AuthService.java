@@ -84,6 +84,14 @@ public class AuthService {
         return iniciarSesion(usuario);
     }
 
+    @Transactional(readOnly = true)
+    public LoginResponse refrescarToken(UUID usuarioId) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> ApiException.unauthorized("NO_AUTENTICADO", "Debes iniciar sesión para continuar"));
+        return new LoginResponse(jwtService.generarToken(usuario), usuario.getId(), usuario.getNombreArtista(),
+                usuario.getRolGlobal().name(), usuario.isPremium());
+    }
+
     private Optional<Usuario> buscarCuenta(GoogleIdentidad identidad) {
         Optional<Usuario> porGoogle = usuarioRepository.findByGoogleSub(identidad.sub());
         if (porGoogle.isPresent()) {

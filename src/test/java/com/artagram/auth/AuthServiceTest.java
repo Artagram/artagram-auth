@@ -133,6 +133,28 @@ class AuthServiceTest {
     }
 
     @Test
+    void refrescarEmiteUnTokenConElPremiumActualSinContarComoLogin() {
+        Usuario usuario = new Usuario("lucia.mora@gmail.com", "lucia_acuarela", "google-123");
+        usuario.setPremium(true);
+        when(usuarioRepository.findById(usuario.getId())).thenReturn(Optional.of(usuario));
+
+        LoginResponse sesion = authService.refrescarToken(usuario.getId());
+
+        assertThat(sesion.premium()).isTrue();
+        assertThat(jwtService.validar(sesion.accessToken()).orElseThrow().premium()).isTrue();
+        verify(eventPublisher, never()).publicarLogin(any());
+    }
+
+    @Test
+    void refrescarUnUsuarioBorradoSeRechaza() {
+        UUID id = UUID.randomUUID();
+        when(usuarioRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.refrescarToken(id))
+                .hasFieldOrPropertyWithValue("code", "NO_AUTENTICADO");
+    }
+
+    @Test
     void sinCorreosAdminConfiguradosNadieEsAdmin() {
         googleProperties.setAdminEmails("");
         Usuario usuario = new Usuario("lucia.mora@gmail.com", "lucia_acuarela", "google-123");
