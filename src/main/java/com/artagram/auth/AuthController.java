@@ -1,17 +1,16 @@
 package com.artagram.auth;
 
 import com.artagram.auth.common.ApiException;
-import com.artagram.auth.dto.LoginRequest;
+import com.artagram.auth.dto.GoogleCompletarRequest;
+import com.artagram.auth.dto.GoogleLoginRequest;
+import com.artagram.auth.dto.GoogleLoginResponse;
 import com.artagram.auth.dto.LoginResponse;
 import com.artagram.auth.dto.NombreDisponibleResponse;
-import com.artagram.auth.dto.RegistroRequest;
-import com.artagram.auth.dto.RegistroResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Tag(name = "Autenticación", description = "HU-01: registro, verificación de correo, login y gestión de cuenta")
+@Tag(name = "Autenticación", description = "HU-01: ingreso con Google y gestión de cuenta")
 public class AuthController {
 
     private final AuthService authService;
@@ -33,20 +32,23 @@ public class AuthController {
         this.rsaJwtService = rsaJwtService;
     }
 
-    @PostMapping("/api/auth/registro")
-    public ResponseEntity<RegistroResponse> registrar(@Valid @RequestBody RegistroRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.registrar(request));
+    @PostMapping("/api/auth/google")
+    public ResponseEntity<GoogleLoginResponse> ingresarConGoogle(@Valid @RequestBody GoogleLoginRequest request) {
+        return ResponseEntity.ok(authService.ingresarConGoogle(request.idToken()));
     }
 
-    @GetMapping("/api/auth/verificar")
-    public ResponseEntity<Void> verificar(@RequestParam String token) {
-        authService.verificar(token);
-        return ResponseEntity.ok().build();
+    @PostMapping("/api/auth/google/completar")
+    public ResponseEntity<LoginResponse> completarRegistro(@Valid @RequestBody GoogleCompletarRequest request) {
+        return ResponseEntity.ok(authService.completarRegistroGoogle(request.idToken(), request.nombreArtista()));
     }
 
-    @PostMapping("/api/auth/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    /**
+     * Vuelve a emitir el JWT con los datos actuales, por ejemplo tras un pago.
+     * Solo acepta el token Bearer, nunca X-User-Id: esta ruta emite credenciales.
+     */
+    @PostMapping("/api/auth/token/refrescar")
+    public ResponseEntity<LoginResponse> refrescarToken(HttpServletRequest request) {
+        return ResponseEntity.ok(authService.refrescarToken(resolverPorToken(request)));
     }
 
     @GetMapping("/api/auth/nombre-disponible")
@@ -67,6 +69,10 @@ public class AuthController {
         if (xUserId != null && !xUserId.isBlank()) {
             return UUID.fromString(xUserId);
         }
+        return resolverPorToken(request);
+    }
+
+    private UUID resolverPorToken(HttpServletRequest request) {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return rsaJwtService.validar(authHeader.substring(7).trim())

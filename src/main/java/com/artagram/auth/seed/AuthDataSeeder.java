@@ -10,18 +10,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
  * Seeder determinista para artagram-auth con los 12 UUIDs fijos de demostración.
+ * Son datos de ejemplo: al no tener cuenta de Google, estos usuarios no inician
+ * sesion.
  */
 @Component
 @Profile("seed")
 public class AuthDataSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AuthDataSeeder.class);
-    private static final String PASSWORD_DEMO = "clavesegura123";
 
     private record UsuarioSeed(UUID id, String correo, String nombreArtista, RolGlobal rol, boolean premium) {
     }
@@ -42,24 +42,20 @@ public class AuthDataSeeder implements CommandLineRunner {
     );
 
     private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
     private final AuthEventPublisher eventPublisher;
 
     public AuthDataSeeder(UsuarioRepository usuarioRepository,
-                          PasswordEncoder passwordEncoder,
                           AuthEventPublisher eventPublisher) {
         this.usuarioRepository = usuarioRepository;
-        this.passwordEncoder = passwordEncoder;
         this.eventPublisher = eventPublisher;
     }
 
     @Override
     public void run(String... args) {
-        String hash = passwordEncoder.encode(PASSWORD_DEMO);
         int creados = 0;
         for (UsuarioSeed seed : USUARIOS_DEMO) {
             if (!usuarioRepository.existsByCorreoIgnoreCase(seed.correo())) {
-                Usuario u = new Usuario(seed.id(), seed.correo(), seed.nombreArtista(), hash);
+                Usuario u = new Usuario(seed.id(), seed.correo(), seed.nombreArtista());
                 u.marcarVerificado();
                 u.setRolGlobal(seed.rol());
                 u.setPremium(seed.premium());

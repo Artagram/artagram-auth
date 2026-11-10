@@ -28,8 +28,8 @@ public class Usuario {
     @Column(name = "nombre_artista", nullable = false, unique = true)
     private String nombreArtista;
 
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
+    @Column(name = "google_sub", unique = true)
+    private String googleSub;
 
     @Column(nullable = false)
     private boolean verificado = false;
@@ -52,18 +52,18 @@ public class Usuario {
     protected Usuario() {
     }
 
-    public Usuario(String correo, String nombreArtista, String passwordHash) {
+    public Usuario(String correo, String nombreArtista, String googleSub) {
         this.id = UUID.randomUUID();
         this.correo = correo;
         this.nombreArtista = nombreArtista;
-        this.passwordHash = passwordHash;
+        this.googleSub = googleSub;
+        this.verificado = true;
     }
 
-    public Usuario(UUID id, String correo, String nombreArtista, String passwordHash) {
+    public Usuario(UUID id, String correo, String nombreArtista) {
         this.id = id != null ? id : UUID.randomUUID();
         this.correo = correo;
         this.nombreArtista = nombreArtista;
-        this.passwordHash = passwordHash;
     }
 
     @PrePersist
@@ -96,12 +96,13 @@ public class Usuario {
         this.nombreArtista = nombreArtista;
     }
 
-    public String getPasswordHash() {
-        return passwordHash;
+    public String getGoogleSub() {
+        return googleSub;
     }
 
-    public void setPasswordHash(String passwordHash) {
-        this.passwordHash = passwordHash;
+    public void vincularGoogle(String googleSub) {
+        this.googleSub = googleSub;
+        this.verificado = true;
     }
 
     public boolean isVerificado() {

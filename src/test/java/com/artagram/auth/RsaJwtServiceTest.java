@@ -22,7 +22,7 @@ class RsaJwtServiceTest {
         RsaJwtService service = new RsaJwtService(props);
 
         UUID id = UUID.fromString("a1b2c3d4-0000-4000-8000-000000000002");
-        Usuario usuario = new Usuario(id, "sam.rivera@correo.com", "sam_pixel", "hash");
+        Usuario usuario = new Usuario(id, "sam.rivera@correo.com", "sam_pixel");
         usuario.marcarVerificado();
         usuario.setPremium(true);
 
