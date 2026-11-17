@@ -50,9 +50,11 @@ public class GoogleTokenVerifier {
         try {
             JWTClaimsSet claims = processor.process(idToken, null);
             if (!EMISORES.contains(claims.getIssuer())) {
+                registrarRechazo("EMISOR_INVALIDO", claims.getIssuer());
                 throw invalido();
             }
             if (!Boolean.TRUE.equals(claims.getBooleanClaim("email_verified"))) {
+                registrarRechazo("CORREO_NO_VERIFICADO", claims.getSubject());
                 throw ApiException.forbidden("CORREO_NO_VERIFICADO", "Tu correo de Google no esta verificado");
             }
             return new GoogleIdentidad(claims.getSubject(), claims.getStringClaim("email"),
@@ -61,9 +63,36 @@ public class GoogleTokenVerifier {
             throw e;
         } catch (ParseException | com.nimbusds.jose.JOSEException
                  | com.nimbusds.jose.proc.BadJOSEException e) {
-            log.warn("ID token de Google rechazado: {}", e.getMessage());
+            registrarRechazo(motivo(e), e.getMessage());
             throw invalido();
         }
+    }
+
+    /**
+     * Todo intento rechazado queda en el log con su motivo (escenario 5): firma,
+     * audiencia, vencimiento, emisor o correo sin verificar. Nunca se registra
+     * el token.
+     */
+    private static void registrarRechazo(String motivo, String detalle) {
+        log.warn("Ingreso con Google rechazado: motivo={} detalle={}", motivo, // NOSONAR javasecurity:S5145 se limpian los saltos de línea
+                detalle == null ? "" : detalle.replaceAll("[\\r\\n\\t]", "_"));
+    }
+
+    static String motivo(Exception e) {
+        String mensaje = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+        if (e instanceof ParseException) {
+            return "TOKEN_MALFORMADO";
+        }
+        if (mensaje.contains("expired")) {
+            return "TOKEN_VENCIDO";
+        }
+        if (mensaje.contains("audience")) {
+            return "AUDIENCIA_INVALIDA";
+        }
+        if (mensaje.contains("signature") || mensaje.contains("key")) {
+            return "FIRMA_INVALIDA";
+        }
+        return "TOKEN_INVALIDO";
     }
 
     private static ApiException invalido() {
