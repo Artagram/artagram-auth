@@ -107,4 +107,19 @@ class GoogleTokenVerifierTest {
         assertThatThrownBy(() -> verifier.verificar("esto-no-es-un-jwt"))
                 .hasFieldOrPropertyWithValue("code", "TOKEN_GOOGLE_INVALIDO");
     }
+
+    @Test
+    void clasificaElMotivoDelRechazoParaElRegistro() {
+        org.assertj.core.api.Assertions.assertThat(GoogleTokenVerifier.motivo(new java.text.ParseException("x", 0)))
+                .isEqualTo("TOKEN_MALFORMADO");
+        org.assertj.core.api.Assertions.assertThat(GoogleTokenVerifier.motivo(
+                new com.nimbusds.jwt.proc.BadJWTException("Expired JWT"))).isEqualTo("TOKEN_VENCIDO");
+        org.assertj.core.api.Assertions.assertThat(GoogleTokenVerifier.motivo(
+                new com.nimbusds.jwt.proc.BadJWTException("JWT audience rejected"))).isEqualTo("AUDIENCIA_INVALIDA");
+        org.assertj.core.api.Assertions.assertThat(GoogleTokenVerifier.motivo(
+                new com.nimbusds.jose.proc.BadJOSEException("Signed JWT rejected: Invalid signature")))
+                .isEqualTo("FIRMA_INVALIDA");
+        org.assertj.core.api.Assertions.assertThat(GoogleTokenVerifier.motivo(
+                new com.nimbusds.jose.proc.BadJOSEException(null))).isEqualTo("TOKEN_INVALIDO");
+    }
 }
