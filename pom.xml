@@ -23,6 +23,7 @@
         <logstash-encoder.version>7.4</logstash-encoder.version>
         <springdoc.version>2.6.0</springdoc.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <jacoco.cobertura.minima>0.90</jacoco.cobertura.minima>
         <!-- SonarQube: V1__auth.sql es historial inmutable de Flyway (cambiarlo
              rompe el checksum en producción). Los hashes de los usuarios demo ya
              no existen en la base: V2__login_google.sql eliminó password_hash. -->
@@ -168,6 +169,26 @@
                         <id>report</id>
                         <phase>verify</phase>
                         <goals><goal>report</goal></goals>
+                    </execution>
+                    <!-- El build falla si la cobertura de líneas baja del mínimo. -->
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.cobertura.minima}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
