@@ -23,6 +23,12 @@
         <logstash-encoder.version>7.4</logstash-encoder.version>
         <springdoc.version>2.6.0</springdoc.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <!-- SonarQube: V1__auth.sql es historial inmutable de Flyway (cambiarlo
+             rompe el checksum en producción). Los hashes de los usuarios demo ya
+             no existen en la base: V2__login_google.sql eliminó password_hash. -->
+        <sonar.issue.ignore.multicriteria>e1</sonar.issue.ignore.multicriteria>
+        <sonar.issue.ignore.multicriteria.e1.ruleKey>secrets:S8215</sonar.issue.ignore.multicriteria.e1.ruleKey>
+        <sonar.issue.ignore.multicriteria.e1.resourceKey>**/db/migration/V1__auth.sql</sonar.issue.ignore.multicriteria.e1.resourceKey>
         <spotbugs.version>4.8.6.4</spotbugs.version>
     </properties>
 

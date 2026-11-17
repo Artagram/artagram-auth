@@ -13,7 +13,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .csrf(AbstractHttpConfigurer::disable)
+                // API REST stateless: la sesión viaja en un JWT por cabecera
+                // Authorization, no en cookies, así que no hay CSRF que explotar.
+                .csrf(AbstractHttpConfigurer::disable) // NOSONAR java:S4502
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .build();

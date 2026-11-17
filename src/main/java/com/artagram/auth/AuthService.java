@@ -123,9 +123,23 @@ public class AuthService {
         }
     }
 
+    /** Quita los '_' del inicio y del final sin regex (evita backtracking). */
+    private static String recortarGuionesBajos(String texto) {
+        int inicio = 0;
+        int fin = texto.length();
+        while (inicio < fin && texto.charAt(inicio) == '_') {
+            inicio++;
+        }
+        while (fin > inicio && texto.charAt(fin - 1) == '_') {
+            fin--;
+        }
+        return texto.substring(inicio, fin);
+    }
+
     private String sugerirNombre(GoogleIdentidad identidad) {
         String fuente = identidad.nombre() != null ? identidad.nombre() : identidad.correo().split("@")[0];
-        String base = fuente.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+        String base = fuente.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
+        base = recortarGuionesBajos(base);
         if (base.length() < NOMBRE_MIN) {
             base = "artista";
         }
